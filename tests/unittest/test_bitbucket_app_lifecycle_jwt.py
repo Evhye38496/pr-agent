@@ -270,12 +270,51 @@ async def test_webhook_rejects_mismatched_qsh(monkeypatch):
     }
     token = jwt.encode(payload_jwt, shared_secret, algorithm="HS256")
 
-    called_commands = []
+    webhook_payload = {
+        "event": "pullrequest:created",
+        "data": {
+            "actor": {"account_id": "account-id-123", "nickname": "testuser", "type": "user"},
+            "pullrequest": {"links": {"html": {"href": "https://bitbucket.org/org/repo/pull-requests/1"}}},
+        },
+    }
+    request = _Request(
+        {"authorization": f"JWT {token}"},
+        webhook_payload,
+        method="POST",
+        path="/webhook",
+    )
+    background_tasks = BackgroundTasks()
 
-    async def fake_perform_commands(*args, **kwargs):
-        called_commands.append(args)
+    result = await _route_endpoint("/webhook", "POST")(background_tasks, request)
+    assert result == "OK"
 
-    monkeypatch.setattr(bitbucket_app, "_perform_commands_bitbucket", fake_perform_commands)
+    # Reject a mismatched qsh before the body is parsed or a task is queued.
+    assert request.json_calls == 0
+    assert not background_tasks.tasks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["malformed_token", "unknown_client_key", "bad_signature"])
+async def test_webhook_rejects_invalid_jwt_before_parsing_body(monkeypatch, case):
+    shared_secret = "secret-12345-very-long-secret-key-32bytes"
+    client_key = "workspace-client-key"
+    stored_secret = json.dumps({"shared_secret": shared_secret, "client_key": client_key})
+    provider = _InMemorySecretProvider({client_key: stored_secret})
+    monkeypatch.setattr(bitbucket_app, "get_fork_safe_secret_provider", lambda: provider)
+
+    now = int(time.time())
+    claims = {
+        "iss": client_key,
+        "iat": now,
+        "exp": now + 300,
+        "qsh": bitbucket_app._compute_qsh("POST", "/webhook"),
+    }
+    if case == "malformed_token":
+        token = "not-a-jwt"
+    elif case == "unknown_client_key":
+        token = jwt.encode({**claims, "iss": "unknown-client-key"}, shared_secret, algorithm="HS256")
+    else:
+        token = jwt.encode(claims, "wrong-secret-32-bytes-long-key!!", algorithm="HS256")
 
     webhook_payload = {
         "event": "pullrequest:created",
@@ -295,9 +334,9 @@ async def test_webhook_rejects_mismatched_qsh(monkeypatch):
     result = await _route_endpoint("/webhook", "POST")(background_tasks, request)
     assert result == "OK"
 
-    await background_tasks()
-    # Verify that a mismatched qsh prevents command execution.
-    assert len(called_commands) == 0
+    # Reject an unverifiable JWT before the body is parsed or a task is queued.
+    assert request.json_calls == 0
+    assert not background_tasks.tasks
 
 
 # --- /installed: Fail-closed verification on provider or secret corruption ---
