@@ -322,7 +322,7 @@ def _verify_webhook_jwt(input_jwt: str, request: Request) -> tuple[str, str] | N
         get_logger().error("Bitbucket webhook JWT is missing 'qsh' claim")
         return None
     expected_qsh = _compute_qsh(method=request.method, path=request.url.path)
-    if not hmac.compare_digest(token_qsh, expected_qsh):
+    if not token_qsh.isascii() or not hmac.compare_digest(token_qsh, expected_qsh):
         get_logger().error("Bitbucket webhook JWT validation failed: qsh mismatch")
         return None
     return client_key, shared_secret

@@ -413,6 +413,49 @@ async def test_webhook_rejects_deeply_nested_claims_before_parsing_body():
     assert not background_tasks.tasks
 
 
+@pytest.mark.asyncio
+async def test_webhook_rejects_non_ascii_qsh_before_parsing_body(monkeypatch):
+    shared_secret = "secret-12345-very-long-secret-key-32bytes"
+    client_key = "workspace-client-key"
+    stored_secret = json.dumps({"shared_secret": shared_secret, "client_key": client_key})
+    provider = _InMemorySecretProvider({client_key: stored_secret})
+    monkeypatch.setattr(bitbucket_app, "get_fork_safe_secret_provider", lambda: provider)
+
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "iss": client_key,
+            "iat": now,
+            "exp": now + 300,
+            "qsh": "qsh-\u2713-value",
+        },
+        shared_secret,
+        algorithm="HS256",
+    )
+
+    webhook_payload = {
+        "event": "pullrequest:created",
+        "data": {
+            "actor": {"account_id": "account-id-123", "nickname": "testuser", "type": "user"},
+            "pullrequest": {"links": {"html": {"href": "https://bitbucket.org/org/repo/pull-requests/1"}}},
+        },
+    }
+    request = _Request(
+        {"authorization": f"JWT {token}"},
+        webhook_payload,
+        method="POST",
+        path="/webhook",
+    )
+    background_tasks = BackgroundTasks()
+
+    result = await _route_endpoint("/webhook", "POST")(background_tasks, request)
+    assert result == "OK"
+
+    # Reject a non-ASCII qsh before the body is parsed.
+    assert request.json_calls == 0
+    assert not background_tasks.tasks
+
+
 # --- /installed: Fail-closed verification on provider or secret corruption ---
 
 
