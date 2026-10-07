@@ -128,6 +128,8 @@ FORBIDDEN_ARGS = [
     '--github_app={private_key: "---BEGIN---", app_id: 123}',
     '--gitea={web_url: "https://evil.example"}',
     '--openai={key: "sk-leaked"}',
+    '--github={deployment_type: "app"}',
+    '--gitlab={ssl_verify: false}',
     # an empty container still exposes its key path for validation
     '--qdrant={url: {}}',
     '--qdrant={server: {url: []}}',
@@ -144,6 +146,10 @@ ALLOWED_ARGS_SINGLE = [
     # a mapping value whose nested keys are all allowed stays accepted
     "--qdrant={timeout: 5, prefer_grpc: true}",
     "--pr_similar_issue.max_issues_to_scan=50",
+    "--github.publish_as_check_run=true",
+    "--gitlab.handle_push_trigger=true",
+    "--bitbucket.identity_request_timeout=10",
+    "--gitea.handle_push_trigger=true",
     # non-flag arguments are not validated against the forbidden list
     "some-positional-arg",
     "yes",
@@ -232,6 +238,7 @@ async def test_handle_request_uses_real_validator_to_block_forbidden(monkeypatch
     update_settings = Mock()
     tool_factory = Mock()
 
+    monkeypatch.setattr(pr_agent_module, "enforce_request_policy", lambda _url: None)
     monkeypatch.setattr(pr_agent_module, "apply_repo_settings", lambda pr_url: None)
     monkeypatch.setattr(pr_agent_module, "update_settings_from_args", update_settings)
     monkeypatch.setitem(pr_agent_module.command2class, "custom", tool_factory)
@@ -268,6 +275,7 @@ async def test_handle_request_rejects_forbidden_mapping_args_in_comment_and_cli(
     update_settings = Mock()
     tool_factory = Mock()
 
+    monkeypatch.setattr(pr_agent_module, "enforce_request_policy", lambda _url: None)
     monkeypatch.setattr(pr_agent_module, "apply_repo_settings", lambda pr_url: None)
     monkeypatch.setattr(pr_agent_module, "update_settings_from_args", update_settings)
     monkeypatch.setitem(pr_agent_module.command2class, "custom", tool_factory)
@@ -304,6 +312,7 @@ async def test_handle_request_rejects_mapping_args_as_the_settings_loader_parses
     tool_factory = Mock()
     qdrant_url_before = pr_agent_module.get_settings().get("qdrant.url")
 
+    monkeypatch.setattr(pr_agent_module, "enforce_request_policy", lambda _url: None)
     monkeypatch.setattr(pr_agent_module, "apply_repo_settings", lambda pr_url: None)
     monkeypatch.setattr(pr_agent_module, "update_settings_from_args", update_settings)
     monkeypatch.setitem(pr_agent_module.command2class, "custom", tool_factory)
@@ -336,6 +345,7 @@ async def test_handle_request_allows_protected_key_names_in_setting_values(monke
     tool_factory = Mock(return_value=tool)
     notify = Mock()
 
+    monkeypatch.setattr(pr_agent_module, "enforce_request_policy", lambda _url: None)
     monkeypatch.setattr(pr_agent_module, "apply_repo_settings", lambda _pr_url: None)
     monkeypatch.setattr(pr_agent_module, "update_settings_from_args", update_settings)
     monkeypatch.setitem(pr_agent_module.command2class, "custom", tool_factory)
