@@ -1,3 +1,4 @@
+import base64
 import json
 import time
 
@@ -379,6 +380,35 @@ async def test_webhook_rejects_malformed_stored_secret_before_parsing_body(monke
     assert result == "OK"
 
     # Reject a stored secret that cannot verify a token before the body is parsed.
+    assert request.json_calls == 0
+    assert not background_tasks.tasks
+
+
+@pytest.mark.asyncio
+async def test_webhook_rejects_deeply_nested_claims_before_parsing_body():
+    nested_claims = "[" * 10000 + "]" * 10000
+    payload_segment = base64.urlsafe_b64encode(nested_claims.encode()).rstrip(b"=").decode()
+    token = f"header.{payload_segment}.signature"
+
+    webhook_payload = {
+        "event": "pullrequest:created",
+        "data": {
+            "actor": {"account_id": "account-id-123", "nickname": "testuser", "type": "user"},
+            "pullrequest": {"links": {"html": {"href": "https://bitbucket.org/org/repo/pull-requests/1"}}},
+        },
+    }
+    request = _Request(
+        {"authorization": f"JWT {token}"},
+        webhook_payload,
+        method="POST",
+        path="/webhook",
+    )
+    background_tasks = BackgroundTasks()
+
+    result = await _route_endpoint("/webhook", "POST")(background_tasks, request)
+    assert result == "OK"
+
+    # Reject claims that cannot be decoded before the body is parsed.
     assert request.json_calls == 0
     assert not background_tasks.tasks
 

@@ -291,7 +291,7 @@ def _verify_webhook_jwt(input_jwt: str, request: Request) -> tuple[str, str] | N
         claim_part = jwt_parts[1]
         claim_part += "=" * (-len(claim_part) % 4)
         decoded_claims = json.loads(base64.urlsafe_b64decode(claim_part))
-    except (binascii.Error, ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
+    except (binascii.Error, ValueError, json.JSONDecodeError, UnicodeDecodeError, RecursionError) as e:
         get_logger().error(f"Bitbucket webhook JWT claims could not be decoded: {e}")
         return None
     if not isinstance(decoded_claims, dict):
