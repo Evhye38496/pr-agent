@@ -314,7 +314,7 @@ def _verify_webhook_jwt(input_jwt: str, request: Request) -> tuple[str, str] | N
             algorithms=["HS256"],
             options={"verify_aud": False},
         )
-    except jwt.InvalidTokenError as e:
+    except (jwt.PyJWTError, TypeError) as e:
         get_logger().error(f"Bitbucket webhook JWT validation failed: {e}")
         return None
     token_qsh = decoded.get("qsh")
